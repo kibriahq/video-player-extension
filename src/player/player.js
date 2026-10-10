@@ -22,6 +22,7 @@ const VOLUME_STORAGE_KEY = "videoPopupPlayerVolume";
 
 const HOLD_DELAY = 500; // ms
 const HOLD_SPEED = 2;
+const VOLUME_STEP = 0.05;
 
 let metadataTimer = null;
 let toastTimer = null;
@@ -493,6 +494,14 @@ function setVolumeFromClientX(clientX) {
   updateMuteButton();
 }
 
+function changeVolume(delta) {
+  video.volume = Math.min(1, Math.max(0, Number((video.volume + delta).toFixed(2))));
+  if (video.muted && video.volume > 0) {
+    video.muted = false;
+  }
+  showToast(`Volume ${Math.round(video.volume * 100)}%`);
+}
+
 volumeBar.addEventListener("mousemove", (event) => {
   const volRect = volumeBar.getBoundingClientRect();
   const shellRect = video.getBoundingClientRect();
@@ -516,6 +525,17 @@ volumeBar.addEventListener("click", (event) => {
   event.preventDefault();
   setVolumeFromClientX(event.clientX);
 });
+
+// Mouse wheel over the volume bar
+volumeBar.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault(); // stop the page from scrolling
+    if (event.deltaY === 0) return;
+    changeVolume(event.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP);
+  },
+  { passive: false }
+);
 
 muteBtn.addEventListener("click", () => {
   video.muted = !video.muted;
@@ -611,15 +631,10 @@ document.addEventListener("keydown", (event) => {
     showToast(`-5s (${formatTime(video.currentTime)})`);
   } else if (event.key === "ArrowUp") {
     event.preventDefault();
-    video.volume = Math.min(1, Number((video.volume + 0.05).toFixed(2)));
-    if (video.muted && video.volume > 0) {
-      video.muted = false;
-    }
-    showToast(`Volume ${Math.round(video.volume * 100)}%`);
+    changeVolume(VOLUME_STEP);
   } else if (event.key === "ArrowDown") {
     event.preventDefault();
-    video.volume = Math.max(0, Number((video.volume - 0.05).toFixed(2)));
-    showToast(`Volume ${Math.round(video.volume * 100)}%`);
+    changeVolume(-VOLUME_STEP);
   } else if (event.key === " ") {
     event.preventDefault();
 
