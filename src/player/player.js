@@ -534,15 +534,15 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "ArrowRight") {
     event.preventDefault();
-    const targetTime = video.currentTime + 10;
+    const targetTime = video.currentTime + 5;
     video.currentTime = Number.isFinite(video.duration)
       ? Math.min(video.duration, targetTime)
       : targetTime;
-    showToast(`+10s (${formatTime(video.currentTime)})`);
+    showToast(`+5s (${formatTime(video.currentTime)})`);
   } else if (event.key === "ArrowLeft") {
     event.preventDefault();
-    video.currentTime = Math.max(0, video.currentTime - 10);
-    showToast(`-10s (${formatTime(video.currentTime)})`);
+    video.currentTime = Math.max(0, video.currentTime - 5);
+    showToast(`-5s (${formatTime(video.currentTime)})`);
   } else if (event.key === "ArrowUp") {
     event.preventDefault();
     video.volume = Math.min(1, Number((video.volume + 0.05).toFixed(2)));
