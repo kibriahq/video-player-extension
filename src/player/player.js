@@ -23,6 +23,9 @@ const VOLUME_STORAGE_KEY = "videoPopupPlayerVolume";
 let metadataTimer = null;
 let toastTimer = null;
 let hoverUiTimer = null;
+let spaceHoldTimer = null;
+let previousPlaybackRate = 1;
+let isSpaceHeld = false;
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds)) {
@@ -276,8 +279,16 @@ async function extractMKVSubtitles(url) {
         if (track.type === "utf8" || track.type === "ass" || track.type === "ssa") {
           trackInfos.set(track.number, track);
           subsByTrack.set(track.number, []);
-        }
-      });
+}
+});
+
+document.addEventListener("keyup", (event) => {
+  if (event.key === " " && isSpaceHeld) {
+    isSpaceHeld = false;
+    video.playbackRate = previousPlaybackRate;
+    showToast(`Speed: ${previousPlaybackRate}x`);
+  }
+});
     });
 
     parser.on("subtitle", (subtitle, trackNumber) => {
@@ -615,8 +626,15 @@ document.addEventListener("keydown", (event) => {
     showToast(`Volume ${Math.round(video.volume * 100)}%`);
   } else if (event.key === " ") {
     event.preventDefault();
-    togglePlayback();
-    // Show hover ui temporarily
+    if (!isSpaceHeld) {
+      isSpaceHeld = true;
+      previousPlaybackRate = video.playbackRate;
+      video.playbackRate = 2;
+      if (video.paused) {
+        video.play().catch(() => {});
+      }
+      showToast("2x Speed (hold space)");
+    }
     showHoverUiTemporarily(500);
   } else if (event.key.toLowerCase() === "f") {
     event.preventDefault();
