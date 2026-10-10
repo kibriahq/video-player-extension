@@ -170,31 +170,90 @@ function formatVTTTime(ms) {
   return `${hours}:${mins}:${secs}.${millis}`;
 }
 
-function extractMKVTitle(uint8Array) {
-  for (let i = 0; i < uint8Array.length - 10; i++) {
-    if (uint8Array[i] === 0x7b && uint8Array[i + 1] === 0xa9) {
-      const sizeByte = uint8Array[i + 2];
-      let titleLength = 0;
-      let dataOffset = 0;
+// Reads an EBML variable-length integer.
+// keepMarker = true for element IDs, false for sizes.
+function readVint(buf, pos, keepMarker) {
+  const first = buf[pos];
+  if (first === undefined || first === 0) return null;
 
-      if ((sizeByte & 0x80) !== 0) {
-        titleLength = sizeByte & 0x7f;
-        dataOffset = i + 3;
-      } else if ((sizeByte & 0x40) !== 0) {
-        titleLength = ((sizeByte & 0x3f) << 8) | uint8Array[i + 3];
-        dataOffset = i + 4;
-      }
-
-      if (titleLength > 0 && titleLength < 1000 && dataOffset + titleLength <= uint8Array.length) {
-        const titleBytes = uint8Array.slice(dataOffset, dataOffset + titleLength);
-        const titleText = new TextDecoder("utf-8").decode(titleBytes);
-        // Only return if it looks like a valid string (no null terminators)
-        if (titleText && !titleText.includes('\x00')) {
-          return titleText;
-        }
-      }
-    }
+  let length = 1;
+  let mask = 0x80;
+  while (!(first & mask)) {
+    length++;
+    mask >>= 1;
   }
+  if (pos + length > buf.length) return null;
+
+  let value = keepMarker ? first : first & (mask - 1);
+  let allOnes = (first & (mask - 1)) === mask - 1;
+
+  for (let i = 1; i < length; i++) {
+    const b = buf[pos + i];
+    if (b !== 0xff) allOnes = false;
+    value = value * 256 + b;
+  }
+
+  return { value, length, unknown: !keepMarker && allOnes };
+}
+
+function extractMKVTitle(buf) {
+  const SEGMENT = 0x18538067;
+  const INFO = 0x1549a966;
+  const TITLE = 0x7ba9;
+  const CLUSTER = 0x1f43b675;
+
+  let pos = 0;
+
+  while (pos < buf.length) {
+    const id = readVint(buf, pos, true);
+    if (!id) return null;
+    const size = readVint(buf, pos + id.length, false);
+    if (!size) return null;
+
+    const dataStart = pos + id.length + size.length;
+
+    // Step into Segment instead of skipping it
+    if (id.value === SEGMENT) {
+      pos = dataStart;
+      continue;
+    }
+
+    // Clusters hold the actual media data, Info always comes before them
+    if (id.value === CLUSTER) return null;
+
+    if (id.value === INFO) {
+      const infoEnd = size.unknown
+        ? buf.length
+        : Math.min(dataStart + size.value, buf.length);
+
+      let p = dataStart;
+      while (p < infoEnd) {
+        const cid = readVint(buf, p, true);
+        if (!cid) return null;
+        const csize = readVint(buf, p + cid.length, false);
+        if (!csize || csize.unknown) return null;
+
+        const cStart = p + cid.length + csize.length;
+        const cEnd = cStart + csize.value;
+        if (cEnd > buf.length) return null;
+
+        if (cid.value === TITLE) {
+          const text = new TextDecoder("utf-8")
+            .decode(buf.subarray(cStart, cEnd))
+            .replace(/\0+$/, "")
+            .trim();
+          return text || null;
+        }
+        p = cEnd;
+      }
+      return null;
+    }
+
+    // Skip any other top-level element (EBML header, SeekHead, etc.)
+    if (size.unknown) return null;
+    pos = dataStart + size.value;
+  }
+
   return null;
 }
 
