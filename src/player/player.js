@@ -20,11 +20,15 @@ const seekTooltip = document.getElementById("seekTooltip");
 const volumeTooltip = document.getElementById("volumeTooltip");
 const VOLUME_STORAGE_KEY = "videoPopupPlayerVolume";
 
+const HOLD_DELAY = 500; // ms
+const HOLD_SPEED = 2;
+
 let metadataTimer = null;
 let toastTimer = null;
 let hoverUiTimer = null;
 let spaceHoldTimer = null;
 let previousPlaybackRate = 1;
+let wasPausedBeforeHold = false;
 let isSpaceHeld = false;
 
 function formatTime(seconds) {
@@ -279,16 +283,8 @@ async function extractMKVSubtitles(url) {
         if (track.type === "utf8" || track.type === "ass" || track.type === "ssa") {
           trackInfos.set(track.number, track);
           subsByTrack.set(track.number, []);
-}
-});
-
-document.addEventListener("keyup", (event) => {
-  if (event.key === " " && isSpaceHeld) {
-    isSpaceHeld = false;
-    video.playbackRate = previousPlaybackRate;
-    showToast(`Speed: ${previousPlaybackRate}x`);
-  }
-});
+        }
+      });
     });
 
     parser.on("subtitle", (subtitle, trackNumber) => {
@@ -626,15 +622,21 @@ document.addEventListener("keydown", (event) => {
     showToast(`Volume ${Math.round(video.volume * 100)}%`);
   } else if (event.key === " ") {
     event.preventDefault();
-    if (!isSpaceHeld) {
+
+    // Ignore repeated keydown events while the key is held down
+    if (event.repeat) return;
+
+    spaceHoldTimer = setTimeout(() => {
       isSpaceHeld = true;
       previousPlaybackRate = video.playbackRate;
-      video.playbackRate = 2;
+      wasPausedBeforeHold = video.paused;
+      video.playbackRate = HOLD_SPEED;
       if (video.paused) {
-        video.play().catch(() => {});
+        video.play().catch(() => { });
       }
-      showToast("2x Speed (hold space)");
-    }
+      showToast(`${HOLD_SPEED}x Speed (hold space)`);
+    }, HOLD_DELAY);
+
     showHoverUiTemporarily(500);
   } else if (event.key.toLowerCase() === "f") {
     event.preventDefault();
@@ -645,6 +647,36 @@ document.addEventListener("keydown", (event) => {
     updateMuteButton();
   }
 });
+
+function resetSpaceHold() {
+  clearTimeout(spaceHoldTimer);
+  spaceHoldTimer = null;
+  if (isSpaceHeld) {
+    isSpaceHeld = false;
+    video.playbackRate = previousPlaybackRate;
+    if (wasPausedBeforeHold) video.pause();
+    showToast(`Speed: ${previousPlaybackRate}x`);
+  }
+}
+
+document.addEventListener("keyup", (event) => {
+  if (event.key !== " ") return;
+
+  event.preventDefault();
+
+  if (isSpaceHeld) {
+    // The key was held, so return only the speed
+    resetSpaceHold();
+  } else {
+    // It was a short press, so toggle play/pause
+    clearTimeout(spaceHoldTimer);
+    spaceHoldTimer = null;
+    togglePlayback();
+  }
+});
+
+// Prevent the speed from getting stuck when switching tabs or windows while holding the key
+window.addEventListener("blur", resetSpaceHold);
 
 
 
